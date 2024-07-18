@@ -1,17 +1,12 @@
-from flask import Flask, request, send_file
-from PyPDF2 import PdfReader, PdfWriter
+from flask import Flask, request
 from flasgger import Swagger, swag_from
-import io
-from reportlab.lib.utils import ImageReader
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import letter
-from PIL import Image
+from stamp import stamp_pdf, stamp_image, stamp_pdf_with_image, stamp_image_with_image
 
 app = Flask(__name__)
 swagger = Swagger(app)
 
 
-@app.route('/stamp', methods=['POST'])
+@app.route('/stamp/text', methods=['POST'])
 @swag_from({
     'parameters': [
         {
@@ -19,7 +14,7 @@ swagger = Swagger(app)
             'in': 'formData',
             'type': 'file',
             'required': True,
-            'description': 'PDF file to be stamped'
+            'description': 'PDF or image file to be stamped'
         },
         {
             'name': 'stamp',
@@ -31,9 +26,21 @@ swagger = Swagger(app)
     ],
     'responses': {
         200: {
-            'description': 'Stamped PDF file',
+            'description': 'Stamped file',
             'content': {
                 'application/pdf': {
+                    'schema': {
+                        'type': 'string',
+                        'format': 'binary'
+                    }
+                },
+                'image/png': {
+                    'schema': {
+                        'type': 'string',
+                        'format': 'binary'
+                    }
+                },
+                'image/jpeg': {
                     'schema': {
                         'type': 'string',
                         'format': 'binary'
@@ -43,43 +50,21 @@ swagger = Swagger(app)
         }
     }
 })
-def stamp_document():
+def stamp_document_text_only():
     file = request.files['file']
     stamp_text = request.form.get('stamp', 'CONFIDENTIAL')
 
-    # Read the uploaded PDF
-    input_pdf = PdfReader(file)
-    output_pdf = PdfWriter()
+    file_ext = file.filename.split('.')[-1].lower()
 
-    # Create a stamped version of the document
-    for page_number in range(len(input_pdf.pages)):
-        page = input_pdf.pages[page_number]
-
-        # Create a canvas to add the stamp
-        packet = io.BytesIO()
-        can = canvas.Canvas(packet, pagesize=letter)
-        can.drawString(100, 500, stamp_text)
-        can.save()
-
-        # Move to the beginning of the StringIO buffer
-        packet.seek(0)
-
-        # Read the canvas as a PDF
-        new_pdf = PdfReader(packet)
-
-        # Merge the canvas PDF with the existing page
-        page.merge_page(new_pdf.pages[0])
-        output_pdf.add_page(page)
-
-    # Save the result
-    output_stream = io.BytesIO()
-    output_pdf.write(output_stream)
-    output_stream.seek(0)
-
-    return send_file(output_stream, as_attachment=True, download_name='stamped_document.pdf')
+    if file_ext in ['pdf']:
+        return stamp_pdf(file, stamp_text)
+    elif file_ext in ['png', 'jpg', 'jpeg']:
+        return stamp_image(file, stamp_text)
+    else:
+        return "Unsupported file type", 400
 
 
-@app.route('/stamp_image', methods=['POST'])
+@app.route('/stamp/image', methods=['POST'])
 @swag_from({
     'parameters': [
         {
@@ -87,7 +72,7 @@ def stamp_document():
             'in': 'formData',
             'type': 'file',
             'required': True,
-            'description': 'PDF file to be stamped'
+            'description': 'PDF or image file to be stamped'
         },
         {
             'name': 'stamp_image',
@@ -99,7 +84,7 @@ def stamp_document():
     ],
     'responses': {
         200: {
-            'description': 'Stamped PDF file',
+            'description': 'Stamped file',
             'content': {
                 'application/pdf': {
                     'schema': {
@@ -111,46 +96,21 @@ def stamp_document():
         }
     }
 })
-def stamp_document_image():
+def stamp_document_image_only():
     file = request.files['file']
     stamp_image_file = request.files['stamp_image']
 
-    # Read the uploaded PDF
-    input_pdf = PdfReader(file)
-    output_pdf = PdfWriter()
+    file_ext = file.filename.split('.')[-1].lower()
 
-    # Read the stamp image
-    stamp_image = ImageReader(stamp_image_file)
-
-    # Create a stamped version of the document
-    for page_number in range(len(input_pdf.pages)):
-        page = input_pdf.pages[page_number]
-
-        # Create a canvas to add the stamp
-        packet = io.BytesIO()
-        can = canvas.Canvas(packet, pagesize=letter)
-        can.drawImage(stamp_image, 300, 500, width=100, height=100)  # Adjust position and size as needed
-        can.save()
-
-        # Move to the beginning of the StringIO buffer
-        packet.seek(0)
-
-        # Read the canvas as a PDF
-        new_pdf = PdfReader(packet)
-
-        # Merge the canvas PDF with the existing page
-        page.merge_page(new_pdf.pages[0])
-        output_pdf.add_page(page)
-
-    # Save the result
-    output_stream = io.BytesIO()
-    output_pdf.write(output_stream)
-    output_stream.seek(0)
-
-    return send_file(output_stream, as_attachment=True, download_name='stamped_document.pdf')
+    if file_ext in ['pdf']:
+        return stamp_pdf_with_image(file, stamp_image_file)
+    elif file_ext in ['png', 'jpg', 'jpeg']:
+        return stamp_image_with_image(file, stamp_image_file)
+    else:
+        return "Unsupported file type", 400
 
 
-@app.route('/stamp_image_transparent', methods=['POST'])
+@app.route('/stamp/image-transparent', methods=['POST'])
 @swag_from({
     'parameters': [
         {
@@ -158,7 +118,7 @@ def stamp_document_image():
             'in': 'formData',
             'type': 'file',
             'required': True,
-            'description': 'PDF file to be stamped'
+            'description': 'PDF or image file to be stamped'
         },
         {
             'name': 'stamp_image',
@@ -170,9 +130,21 @@ def stamp_document_image():
     ],
     'responses': {
         200: {
-            'description': 'Stamped PDF file',
+            'description': 'Stamped file',
             'content': {
                 'application/pdf': {
+                    'schema': {
+                        'type': 'string',
+                        'format': 'binary'
+                    }
+                },
+                'image/png': {
+                    'schema': {
+                        'type': 'string',
+                        'format': 'binary'
+                    }
+                },
+                'image/jpeg': {
                     'schema': {
                         'type': 'string',
                         'format': 'binary'
@@ -186,60 +158,15 @@ def stamp_document_image_transparent():
     file = request.files['file']
     stamp_image_file = request.files['stamp_image']
 
-    # Read the uploaded PDF
-    input_pdf = PdfReader(file)
-    output_pdf = PdfWriter()
-
-    # Read the stamp image and add transparency
-    stamp_image = Image.open(stamp_image_file).convert("RGBA")
-    datas = stamp_image.getdata()
-
-    new_data = []
-    for item in datas:
-        # Change all white (also shades of whites)
-        # pixels to transparent
-        if item[0] in list(range(200, 256)):
-            new_data.append((255, 255, 255, 0))
-        else:
-            new_data.append(item)
-
-    stamp_image.putdata(new_data)
-
-    # Save the modified image to a BytesIO object
-    image_io = io.BytesIO()
-    stamp_image.save(image_io, format='PNG')
-    image_io.seek(0)
-    transparent_stamp_image = ImageReader(image_io)
-
-    # Create a stamped version of the document
-    for page_number in range(len(input_pdf.pages)):
-        page = input_pdf.pages[page_number]
-
-        # Create a canvas to add the stamp
-        packet = io.BytesIO()
-        can = canvas.Canvas(packet, pagesize=letter)
-        can.drawImage(transparent_stamp_image, 250, 550, width=100, height=100, mask='auto')  # Adjust position and size as needed
-        can.save()
-
-        # Move to the beginning of the StringIO buffer
-        packet.seek(0)
-
-        # Read the canvas as a PDF
-        new_pdf = PdfReader(packet)
-
-        # Merge the canvas PDF with the existing page
-        page.merge_page(new_pdf.pages[0])
-        output_pdf.add_page(page)
-
-    # Save the result
-    output_stream = io.BytesIO()
-    output_pdf.write(output_stream)
-    output_stream.seek(0)
-
-    return send_file(output_stream, as_attachment=True, download_name='stamped_document.pdf')
+    if file.content_type == 'application/pdf':
+        return stamp_pdf_with_image(file, stamp_image_file)
+    elif file.content_type.startswith('image/'):
+        return stamp_image_with_image(file, stamp_image_file)
+    else:
+        return "Unsupported file type", 400
 
 
-@app.route('/stamp_image_text', methods=['POST'])
+@app.route('/stamp/image-and-text', methods=['POST'])
 @swag_from({
     'parameters': [
         {
@@ -247,7 +174,7 @@ def stamp_document_image_transparent():
             'in': 'formData',
             'type': 'file',
             'required': True,
-            'description': 'PDF file to be stamped'
+            'description': 'PDF or image file to be stamped'
         },
         {
             'name': 'stamp_image',
@@ -273,6 +200,18 @@ def stamp_document_image_transparent():
                         'type': 'string',
                         'format': 'binary'
                     }
+                },
+                'image/png': {
+                    'schema': {
+                        'type': 'string',
+                        'format': 'binary'
+                    }
+                },
+                'image/jpeg': {
+                    'schema': {
+                        'type': 'string',
+                        'format': 'binary'
+                    }
                 }
             }
         }
@@ -281,65 +220,14 @@ def stamp_document_image_transparent():
 def stamp_document_image_text():
     file = request.files['file']
     stamp_image_file = request.files['stamp_image']
-    signer_name = request.form.get('signer_name', 'Adebayo')
+    signer_text = request.form.get('signer_text')
 
-    # Read the uploaded PDF
-    input_pdf = PdfReader(file)
-    output_pdf = PdfWriter()
-
-    # Read the stamp image and add transparency
-    stamp_image = Image.open(stamp_image_file).convert("RGBA")
-    datas = stamp_image.getdata()
-
-    new_data = []
-    for item in datas:
-        # Change all white (also shades of whites)
-        # pixels to transparent
-        if item[0] in list(range(200, 256)):
-            new_data.append((255, 255, 255, 0))
-        else:
-            new_data.append(item)
-
-    stamp_image.putdata(new_data)
-
-    # Save the modified image to a BytesIO object
-    image_io = io.BytesIO()
-    stamp_image.save(image_io, format='PNG')
-    image_io.seek(0)
-    transparent_stamp_image = ImageReader(image_io)
-
-    # Create a stamped version of the document
-    for page_number in range(len(input_pdf.pages)):
-        page = input_pdf.pages[page_number]
-
-        # Create a canvas to add the stamp
-        packet = io.BytesIO()
-        can = canvas.Canvas(packet, pagesize=letter)
-
-        # Draw the text
-        text = f"This document was signed by {signer_name}"
-        can.drawString(200, 650, text)  # Adjust position as needed
-
-        # Draw the stamp image
-        can.drawImage(transparent_stamp_image, 250, 550, width=100, height=100, mask='auto')  # Adjust position and size as needed
-        can.save()
-
-        # Move to the beginning of the StringIO buffer
-        packet.seek(0)
-
-        # Read the canvas as a PDF
-        new_pdf = PdfReader(packet)
-
-        # Merge the canvas PDF with the existing page
-        page.merge_page(new_pdf.pages[0])
-        output_pdf.add_page(page)
-
-    # Save the result
-    output_stream = io.BytesIO()
-    output_pdf.write(output_stream)
-    output_stream.seek(0)
-
-    return send_file(output_stream, as_attachment=True, download_name='stamped_document.pdf')
+    if file.content_type == 'application/pdf':
+        return stamp_pdf_with_image(file, stamp_image_file, signer_text)
+    elif file.content_type.startswith('image/'):
+        return stamp_image_with_image(file, stamp_image_file, signer_text)
+    else:
+        return "Unsupported file type", 400
 
 
 if __name__ == '__main__':
