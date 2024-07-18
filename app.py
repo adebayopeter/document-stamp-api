@@ -1,5 +1,6 @@
 from flask import Flask, request, send_file
 from PyPDF2 import PdfReader, PdfWriter
+from flasgger import Swagger, swag_from
 import io
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
@@ -7,9 +8,41 @@ from reportlab.lib.pagesizes import letter
 from PIL import Image
 
 app = Flask(__name__)
+swagger = Swagger(app)
 
 
 @app.route('/stamp', methods=['POST'])
+@swag_from({
+    'parameters': [
+        {
+            'name': 'file',
+            'in': 'formData',
+            'type': 'file',
+            'required': True,
+            'description': 'PDF file to be stamped'
+        },
+        {
+            'name': 'stamp',
+            'in': 'formData',
+            'type': 'string',
+            'required': False,
+            'description': 'Text to be used as stamp'
+        }
+    ],
+    'responses': {
+        200: {
+            'description': 'Stamped PDF file',
+            'content': {
+                'application/pdf': {
+                    'schema': {
+                        'type': 'string',
+                        'format': 'binary'
+                    }
+                }
+            }
+        }
+    }
+})
 def stamp_document():
     file = request.files['file']
     stamp_text = request.form.get('stamp', 'CONFIDENTIAL')
@@ -47,6 +80,37 @@ def stamp_document():
 
 
 @app.route('/stamp_image', methods=['POST'])
+@swag_from({
+    'parameters': [
+        {
+            'name': 'file',
+            'in': 'formData',
+            'type': 'file',
+            'required': True,
+            'description': 'PDF file to be stamped'
+        },
+        {
+            'name': 'stamp_image',
+            'in': 'formData',
+            'type': 'file',
+            'required': True,
+            'description': 'Image file to be used as stamp'
+        }
+    ],
+    'responses': {
+        200: {
+            'description': 'Stamped PDF file',
+            'content': {
+                'application/pdf': {
+                    'schema': {
+                        'type': 'string',
+                        'format': 'binary'
+                    }
+                }
+            }
+        }
+    }
+})
 def stamp_document_image():
     file = request.files['file']
     stamp_image_file = request.files['stamp_image']
@@ -87,6 +151,37 @@ def stamp_document_image():
 
 
 @app.route('/stamp_image_transparent', methods=['POST'])
+@swag_from({
+    'parameters': [
+        {
+            'name': 'file',
+            'in': 'formData',
+            'type': 'file',
+            'required': True,
+            'description': 'PDF file to be stamped'
+        },
+        {
+            'name': 'stamp_image',
+            'in': 'formData',
+            'type': 'file',
+            'required': True,
+            'description': 'Image file to be used as stamp'
+        }
+    ],
+    'responses': {
+        200: {
+            'description': 'Stamped PDF file',
+            'content': {
+                'application/pdf': {
+                    'schema': {
+                        'type': 'string',
+                        'format': 'binary'
+                    }
+                }
+            }
+        }
+    }
+})
 def stamp_document_image_transparent():
     file = request.files['file']
     stamp_image_file = request.files['stamp_image']
@@ -145,6 +240,44 @@ def stamp_document_image_transparent():
 
 
 @app.route('/stamp_image_text', methods=['POST'])
+@swag_from({
+    'parameters': [
+        {
+            'name': 'file',
+            'in': 'formData',
+            'type': 'file',
+            'required': True,
+            'description': 'PDF file to be stamped'
+        },
+        {
+            'name': 'stamp_image',
+            'in': 'formData',
+            'type': 'file',
+            'required': True,
+            'description': 'Image file to be used as stamp'
+        },
+        {
+            'name': 'signer_name',
+            'in': 'formData',
+            'type': 'string',
+            'required': False,
+            'description': 'Signer name to be included in the stamp'
+        }
+    ],
+    'responses': {
+        200: {
+            'description': 'Stamped PDF file',
+            'content': {
+                'application/pdf': {
+                    'schema': {
+                        'type': 'string',
+                        'format': 'binary'
+                    }
+                }
+            }
+        }
+    }
+})
 def stamp_document_image_text():
     file = request.files['file']
     stamp_image_file = request.files['stamp_image']
