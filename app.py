@@ -16,7 +16,7 @@ def api_docs():
     return "API Documentation"
 
 
-@app.route('/stamp/text', methods=['POST'])
+@app.route('/api/stamp/text', methods=['POST'])
 @swag_from({
     'parameters': [
         {
@@ -74,7 +74,7 @@ def stamp_document_text_only():
         return "Unsupported file type", 400
 
 
-@app.route('/stamp/image', methods=['POST'])
+@app.route('/api/stamp/image', methods=['POST'])
 @swag_from({
     'parameters': [
         {
@@ -132,7 +132,7 @@ def stamp_document_image():
         return "Unsupported file type", 400
 
 
-@app.route('/stamp/image-and-text', methods=['POST'])
+@app.route('/api/stamp/image-and-text', methods=['POST'])
 @swag_from({
     'parameters': [
         {
