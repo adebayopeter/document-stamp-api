@@ -1,9 +1,19 @@
-from flask import Flask, request
+from flask import Flask, request, jsonify, render_template, url_for
 from flasgger import Swagger, swag_from
 from stamp import stamp_pdf, stamp_image, stamp_pdf_with_image, stamp_image_with_image
 
 app = Flask(__name__)
 swagger = Swagger(app)
+
+
+@app.route('/')
+def home():
+    return render_template('home.html')
+
+
+@app.route('/apidocs/')
+def api_docs():
+    return "API Documentation"
 
 
 @app.route('/stamp/text', methods=['POST'])
@@ -91,52 +101,6 @@ def stamp_document_text_only():
                         'type': 'string',
                         'format': 'binary'
                     }
-                }
-            }
-        }
-    }
-})
-def stamp_document_image_only():
-    file = request.files['file']
-    stamp_image_file = request.files['stamp_image']
-
-    file_ext = file.filename.split('.')[-1].lower()
-
-    if file_ext in ['pdf']:
-        return stamp_pdf_with_image(file, stamp_image_file)
-    elif file_ext in ['png', 'jpg', 'jpeg']:
-        return stamp_image_with_image(file, stamp_image_file)
-    else:
-        return "Unsupported file type", 400
-
-
-@app.route('/stamp/image-transparent', methods=['POST'])
-@swag_from({
-    'parameters': [
-        {
-            'name': 'file',
-            'in': 'formData',
-            'type': 'file',
-            'required': True,
-            'description': 'PDF or image file to be stamped'
-        },
-        {
-            'name': 'stamp_image',
-            'in': 'formData',
-            'type': 'file',
-            'required': True,
-            'description': 'Image file to be used as stamp'
-        }
-    ],
-    'responses': {
-        200: {
-            'description': 'Stamped file',
-            'content': {
-                'application/pdf': {
-                    'schema': {
-                        'type': 'string',
-                        'format': 'binary'
-                    }
                 },
                 'image/png': {
                     'schema': {
@@ -154,13 +118,15 @@ def stamp_document_image_only():
         }
     }
 })
-def stamp_document_image_transparent():
+def stamp_document_image():
     file = request.files['file']
     stamp_image_file = request.files['stamp_image']
 
-    if file.content_type == 'application/pdf':
+    file_ext = file.filename.split('.')[-1].lower()
+
+    if file_ext in ['pdf']:
         return stamp_pdf_with_image(file, stamp_image_file)
-    elif file.content_type.startswith('image/'):
+    elif file_ext in ['png', 'jpg', 'jpeg']:
         return stamp_image_with_image(file, stamp_image_file)
     else:
         return "Unsupported file type", 400
@@ -184,7 +150,7 @@ def stamp_document_image_transparent():
             'description': 'Image file to be used as stamp'
         },
         {
-            'name': 'signer_name',
+            'name': 'signer_text_message',
             'in': 'formData',
             'type': 'string',
             'required': False,
@@ -218,13 +184,16 @@ def stamp_document_image_transparent():
     }
 })
 def stamp_document_image_text():
+    # json_request = request.json
     file = request.files['file']
     stamp_image_file = request.files['stamp_image']
-    signer_text = request.form.get('signer_text')
+    signer_text = request.form.get('signer_text_message')
 
-    if file.content_type == 'application/pdf':
+    file_ext = file.filename.split('.')[-1].lower()
+
+    if file_ext in ['pdf']:
         return stamp_pdf_with_image(file, stamp_image_file, signer_text)
-    elif file.content_type.startswith('image/'):
+    elif file_ext in ['png', 'jpg', 'jpeg']:
         return stamp_image_with_image(file, stamp_image_file, signer_text)
     else:
         return "Unsupported file type", 400

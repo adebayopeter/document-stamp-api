@@ -176,19 +176,45 @@ def stamp_pdf_with_image(file, stamp_image_file, signer_text=None):
     for page_number in range(len(input_pdf.pages)):
         page = input_pdf.pages[page_number]
 
+        # Get page dimensions
+        width = float(page.mediabox.width)
+        height = float(page.mediabox.height)
+
         # Create a canvas to add the stamp
         packet = io.BytesIO()
-        can = canvas.Canvas(packet, pagesize=letter)
+        can = canvas.Canvas(packet, pagesize=(width, height))
 
         # check if signer_text is None
         if signer_text is not None:
-            # Draw the text
-            text = f"{signer_text}"
-            # Adjust position as needed
-            can.drawString(200, 650, text)
+            # Split the text into lines that fit within the page width
+            lines = split_text_to_fit(signer_text, can, width - 40, 'Helvetica', 12, context_type='pdf')
+
+            # Calculate the total height of the text block
+            line_height = 12
+            total_text_height = line_height * len(lines)
+            # Move upward by adding to the height
+            y_position = (height + total_text_height) / 2
+
+            # Draw each line of text
+            for line in lines:
+                text_width = can.stringWidth(line, 'Helvetica', 12)
+                x_position = (width - text_width) / 2
+                can.drawString(x_position, y_position, line)
+                y_position -= line_height
+
+            # Adjust the position for the image to be below the text block
+            y_image_position = y_position - line_height  # Leave a gap equal to one line height
+
+        else:
+            y_image_position = height / 2  # Center the image vertically if no text
 
         # Adjust position and size as needed
-        can.drawImage(transparent_stamp_image, 250, 550, width=100, height=100, mask='auto')
+        stamp_width = 100
+        stamp_height = 100
+        x_stamp = (width - stamp_width) / 2
+        y_stamp = y_image_position - stamp_height
+        can.drawImage(transparent_stamp_image, x_stamp, y_stamp,
+                      width=stamp_width, height=stamp_width, mask='auto')
         can.save()
 
         # Move to the beginning of the StringIO buffer
@@ -215,49 +241,55 @@ def stamp_image_with_image(file, stamp_image_file, signer_text=None):
     stamp_img = Image.open(stamp_image_file).convert("RGBA")
 
     # Adjust the transparency of the stamp image
-    datas = stamp_img.getdata()
-    new_data = []
-    for item in datas:
-        if item[0] in list(range(200, 256)):
-            new_data.append((255, 255, 255, 0))
-        else:
-            new_data.append(item)
+    new_data = [(255, 255, 255, 0) if 200 <= pixel[0] <= 255 else pixel for pixel in stamp_img.getdata()]
     stamp_img.putdata(new_data)
 
-    # Adjust the size of the stamp image base on 20:100 ratio
     width, height = image.size
-    stamp_ratio = 0.2
 
-    # Calculate dimensions while maintaining the aspect ratio
+    # Calculate the font size as 5% of the image width
+    font_size = int(width * 0.02)
+    try:
+        font_path = "font/helvetica/Helvetica.ttf"
+        font = ImageFont.truetype(font_path, font_size)
+    except IOError:
+        font = ImageFont.load_default()
+
+    base = image.copy()
+    draw = ImageDraw.Draw(base)
+
+    if signer_text:
+        # Use the existing split_text_to_fit function
+        lines = split_text_to_fit(signer_text, draw, width - 40, "Helvetica", font_size, context_type='image')
+
+        # Calculate the total height of the text block
+        text_height = sum(draw.textbbox((0, 0), line, font=font)[3] - draw.textbbox((0, 0), line, font=font)[1] + 10 for line in lines)
+        text_y_position = (height // 2) - (text_height // 2)
+
+        # Draw each line of text
+        for line in lines:
+            bbox = draw.textbbox((0, 0), line, font=font)
+            text_width = bbox[2] - bbox[0]
+            text_x_position = (width - text_width) // 2
+            draw.text((text_x_position, text_y_position), line, font=font, fill=(255, 0, 0, 255))
+            text_y_position += (bbox[3] - bbox[1]) + 10  # Adjust spacing between lines
+
+        # Adjust the position for the image to be below the text block
+        y_image_position = text_y_position + 20  # Leave a gap equal to one line height
+
+    else:
+        y_image_position = (height // 2) - (stamp_img.height // 2)  # Center the image vertically if no text
+
+    stamp_ratio = 0.2
     stamp_width = int(width * stamp_ratio)
     stamp_height = int(stamp_width * (stamp_img.height / stamp_img.width))
 
-    # Resize the stamp image
     stamp_img = stamp_img.resize((stamp_width, stamp_height), Image.LANCZOS)
 
-    # Create a new image with an alpha layer (RGBA)
-    base = image.copy()
-
-    # Paste the stamp image onto the base image
-    base.paste(stamp_img, (width // 2 - stamp_width // 2, height // 2 - stamp_height // 2), stamp_img)
-
-    # check if signer_text is None
-    if signer_text is not None:
-        # Create an overlay for the text
-        txt_overlay = Image.new("RGBA", base.size, (255, 255, 255, 0))
-        draw = ImageDraw.Draw(txt_overlay)
-
-        # Draw the text on the overlay
-        text_position = (width // 2 - stamp_width // 2, height // 2 - stamp_height // 2 - 20)
-        draw.text(text_position, signer_text, fill=(0, 0, 0, 255))  # Adjust the text color as needed
-
-        # Composite the text overlay onto the base image
-        base = Image.alpha_composite(base, txt_overlay)
+    x_image_position = (width // 2) - (stamp_width // 2)
+    base.paste(stamp_img, (x_image_position, y_image_position), stamp_img)
 
     output_stream = io.BytesIO()
     base.save(output_stream, format='PNG')
     output_stream.seek(0)
 
-    return send_file(output_stream, as_attachment=True,
-                     download_name='stamped_image.png', mimetype='image/png')
-
+    return send_file(output_stream, as_attachment=True, download_name='stamped_image.png', mimetype='image/png')
