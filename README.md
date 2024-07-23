@@ -50,14 +50,14 @@ This Flask API allows you to stamp PDF documents with text or images. It provide
    The API will be available at http://127.0.0.1:5000.
 
    ### Endpoints
-1. `/stamp`
+1. `/stamp/text`
 
-   Description: Stamps the PDF document with the given text.
+   Description: Stamps the PDF document or image file with the given text.
 
    Method: POST 
 
    Form Data:
-   - `file`: The PDF file to be stamped.
+   - `file`: The PDF or image file to be stamped.
    - `stamp`: The text to stamp on the PDF (default: "CONFIDENTIAL").
    
    Example:
@@ -65,14 +65,14 @@ This Flask API allows you to stamp PDF documents with text or images. It provide
    curl -X POST -F file=@document.pdf -F stamp="TOP SECRET" http://127.0.0.1:5000/stamp -o stamped_document.pdf
    ```
    
-2. `/stamp_image`
+2. `/stamp/image`
 
-   Description: Stamps the PDF document with the given image.
+   Description: Stamps the PDF document or image file with the given image.
 
    Method: POST 
 
    Form Data:
-   - `file`: The PDF file to be stamped.
+   - `file`: The PDF or image file to be stamped.
    - `stamp_image`: The image file to use as a stamp.
    
    Example:
@@ -80,29 +80,14 @@ This Flask API allows you to stamp PDF documents with text or images. It provide
    curl -X POST -F file=@document.pdf -F stamp_image=@stamp.png http://127.0.0.1:5000/stamp_image -o stamped_document.pdf
    ```
    
-3. `/stamp_image_transparent`
+3. `/stamp/image-and-text`
 
-   Description: Stamps the PDF document with the given image, making the white pixels transparent.
-   
-   Method: POST 
-
-   Form Data:
-   - `file`: The PDF file to be stamped.
-   - `stamp_image`: The image file to use as a stamp.
-   
-   Example:
-   ```sh
-   curl -X POST -F file=@document.pdf -F stamp_image=@stamp.png http://127.0.0.1:5000/stamp_image_transparent -o stamped_document.pdf
-   ```
-   
-4. `/stamp_image_text`
-
-   Description: Stamps the PDF document with the given image and adds a text indicating the signer.
+   Description: Stamps the PDF document or image file with the given image and adds a text indicating the signer.
 
    Method: POST 
 
    Form Data:
-   - `file`: The PDF file to be stamped.
+   - `file`: The PDF or image file to be stamped.
    - `stamp_image`: The image file to use as a stamp.
    - `signer_name`: The name of the signer to include in the text stamp (default: "Adebayo Olaonipekun").
    
