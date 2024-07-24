@@ -1,11 +1,47 @@
-from flask import Flask, request, jsonify, render_template, url_for
+import os
+from dotenv import load_dotenv
+from flask import Flask, request, jsonify, render_template, url_for, send_from_directory
 from flasgger import Swagger, swag_from
 from stamp import stamp_pdf, stamp_image, stamp_pdf_with_image, stamp_image_with_image
 
+# Load environment variables from .env file
+load_dotenv()
+
+# Determine the environment
+base_url = os.getenv('BASE_URL', 'localhost:5000')
+
 app = Flask(__name__)
 
-# Basic Swagger template with tags for grouping
+# Custom Swagger configuration
+swagger_config = {
+    "headers": [],
+    "specs": [
+        {
+            "endpoint": 'apispec_1',
+            "route": '/apispec_1.json',
+            "rule_filter": lambda rule: True,  # all in
+            "model_filter": lambda tag: True,  # all in
+        }
+    ],
+    "static_url_path": "/flasgger_static",
+    "swagger_ui": True,
+    "specs_route": "/apidocs/"
+}
+
+# Custom Swagger template with tags for grouping
 template = {
+    "swagger": "2.0",
+    "info": {
+        "title": "My Bucket API",
+        "description": "API documentation to unlock the awesome and powerful possibilities with Python 🐍.",
+        "version": "1.0.0"
+    },
+    "host": base_url,  # Change this to the appropriate host
+    "basePath": "/",  # Base path for the endpoints
+    "schemes": [
+        "http",
+        "https"
+    ],
     "tags": [
         {
             "name": "Stamping",
@@ -14,20 +50,13 @@ template = {
     ]
 }
 
-swagger = Swagger(app, template={
-    "swagger": "2.0",
-    "info": {
-        "title": "My API Documentation",
-        "description": "API documentation for my bucket stamping application.",
-        "version": "0.0.1"
-    },
-    "host": "localhost:5000",
-    "basePath": "/",
-    "schemes": [
-        "http",
-        "https"
-    ]
-})
+swagger = Swagger(app, config=swagger_config, template=template)
+
+
+# Serve custom CSS and JavaScript
+@app.route('/static/<path:path>')
+def send_static(path):
+    return send_from_directory('static', path)
 
 
 @app.route('/')
@@ -37,7 +66,7 @@ def home():
 
 @app.route('/apidocs/')
 def api_docs():
-    return "API Documentation"
+    return render_template('swagger_ui.html')
 
 
 @app.route('/api/stamp/text', methods=['POST'])
