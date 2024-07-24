@@ -1,4 +1,5 @@
 import os
+import logging
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify, render_template, url_for, send_from_directory
 from flasgger import Swagger, swag_from
@@ -15,6 +16,15 @@ app = Flask(__name__)
 # Ensure the 'downloads' directory exists
 if not os.path.exists('downloads'):
     os.makedirs('downloads')
+
+
+# Configure logging
+logging.basicConfig(filename='stamping.log', level=logging.INFO, format='%(asctime)s - %(message)s')
+
+
+def log_stamp_activity(file_name):
+    logging.info(f'File stamped: {file_name}')
+
 
 # Custom Swagger configuration
 swagger_config = {
@@ -162,12 +172,14 @@ def stamp_document_text_only():
 
     if file_ext in ['pdf']:
         output_path = stamp_pdf(file, stamp_text, position)
+        log_stamp_activity(output_path)
         return jsonify({
             'status': 'success',
             'download_link': url_for('download_file', filename=output_path, _external=True)
         })
     elif file_ext in ['png', 'jpg', 'jpeg']:
         output_path = stamp_image(file, stamp_text, position)
+        log_stamp_activity(output_path)
         return jsonify({
             'status': 'success',
             'download_link': url_for('download_file', filename=output_path, _external=True)
@@ -266,12 +278,14 @@ def stamp_document_image():
 
     if file_ext in ['pdf']:
         output_path = stamp_pdf_with_image(file, stamp_image_file, position)
+        log_stamp_activity(output_path)
         return jsonify({
             'status': 'success',
             'download_link': url_for('download_file', filename=output_path, _external=True)
         })
     elif file_ext in ['png', 'jpg', 'jpeg']:
         output_path = stamp_image_with_image(file, stamp_image_file, position)
+        log_stamp_activity(output_path)
         return jsonify({
             'status': 'success',
             'download_link': url_for('download_file', filename=output_path, _external=True)
@@ -383,12 +397,14 @@ def stamp_document_image_text():
 
     if file_ext in ['pdf']:
         output_path = stamp_pdf_with_image(file, stamp_image_file, signer_text, position)
+        log_stamp_activity(output_path)
         return jsonify({
             'status': 'success',
             'download_link': url_for('download_file', filename=output_path, _external=True)
         })
     elif file_ext in ['png', 'jpg', 'jpeg']:
         output_path = stamp_image_with_image(file, stamp_image_file, signer_text, position)
+        log_stamp_activity(output_path)
         return jsonify({
             'status': 'success',
             'download_link': url_for('download_file', filename=output_path, _external=True)
