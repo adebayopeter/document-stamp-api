@@ -3,7 +3,31 @@ from flasgger import Swagger, swag_from
 from stamp import stamp_pdf, stamp_image, stamp_pdf_with_image, stamp_image_with_image
 
 app = Flask(__name__)
-swagger = Swagger(app)
+
+# Basic Swagger template with tags for grouping
+template = {
+    "tags": [
+        {
+            "name": "Stamping",
+            "description": "Operations related to stamping text/images/text & images on documents and images"
+        }
+    ]
+}
+
+swagger = Swagger(app, template={
+    "swagger": "2.0",
+    "info": {
+        "title": "My API Documentation",
+        "description": "API documentation for my bucket stamping application.",
+        "version": "0.0.1"
+    },
+    "host": "localhost:5000",
+    "basePath": "/",
+    "schemes": [
+        "http",
+        "https"
+    ]
+})
 
 
 @app.route('/')
@@ -18,6 +42,7 @@ def api_docs():
 
 @app.route('/api/stamp/text', methods=['POST'])
 @swag_from({
+    'tags': ['Stamping'],
     'parameters': [
         {
             'name': 'file',
@@ -76,6 +101,7 @@ def stamp_document_text_only():
 
 @app.route('/api/stamp/image', methods=['POST'])
 @swag_from({
+    'tags': ['Stamping'],
     'parameters': [
         {
             'name': 'file',
@@ -134,6 +160,7 @@ def stamp_document_image():
 
 @app.route('/api/stamp/image-and-text', methods=['POST'])
 @swag_from({
+    'tags': ['Stamping'],
     'parameters': [
         {
             'name': 'file',

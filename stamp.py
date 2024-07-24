@@ -61,7 +61,7 @@ def stamp_pdf(file, stamp_text):
         can = canvas.Canvas(packet, pagesize=(width, height))
 
         # Split the text into lines that fit within the page width
-        lines = split_text_to_fit(stamp_text, can, width - 40)  # 40 to account for some margin
+        lines = split_text_to_fit(stamp_text, can, width - 40, 'Helvetica', 12, context_type='pdf')  # 40 to account for some margin
 
         # Calculate the initial y position to centralize the text vertically
         line_height = 12  # Assuming font size 12
