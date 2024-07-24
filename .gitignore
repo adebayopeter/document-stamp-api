@@ -2,3 +2,5 @@
 .idea
 wfastcgi.py
 web.config
+wfastcgi.log
+.env
