@@ -1,9 +1,12 @@
 import io
+import os
+import uuid
+from datetime import datetime
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
-from flask import Flask, request, send_file
+from flask import send_file
 from PIL import Image, ImageDraw, ImageFont
 
 
@@ -43,10 +46,34 @@ def split_text_to_fit(text, context, max_width, font_name="Helvetica", font_size
     return lines
 
 
-def stamp_pdf(file, stamp_text):
+def calculate_position(width, height, stamp_width, stamp_height, position):
+    if position == 'top':
+        return (width - stamp_width) // 2, height - stamp_height - 10
+    elif position == 'bottom':
+        return (width - stamp_width) // 2, 10
+    elif position == 'left':
+        return 10, (height - stamp_height) // 2
+    elif position == 'right':
+        return width - stamp_width - 10, (height - stamp_height) // 2
+    else:
+        # center
+        return (width - stamp_width) // 2, (height - stamp_height) // 2
+
+
+def generate_unique_filename(extension):
+    unique_id = uuid.uuid4()
+    timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+    return f"{unique_id}_{timestamp}.{extension}"
+
+
+# stamp pdf with text
+def stamp_pdf(file, stamp_text, position='center'):
     # Read the uploaded PDF
     input_pdf = PdfReader(file)
     output_pdf = PdfWriter()
+
+    output_filename = generate_unique_filename('pdf')
+    output_path = os.path.join('downloads', output_filename)
 
     # Create a stamped version of the document
     for page_number in range(len(input_pdf.pages)):
@@ -61,19 +88,14 @@ def stamp_pdf(file, stamp_text):
         can = canvas.Canvas(packet, pagesize=(width, height))
 
         # Split the text into lines that fit within the page width
-        lines = split_text_to_fit(stamp_text, can, width - 40, 'Helvetica', 12, context_type='pdf')  # 40 to account for some margin
-
-        # Calculate the initial y position to centralize the text vertically
-        line_height = 12  # Assuming font size 12
-        total_text_height = line_height * len(lines)
-        y_position = (height - total_text_height) / 2
+        # 40 to account for some margin
+        lines = split_text_to_fit(stamp_text, can, width - 40, 'Helvetica', 12, context_type='pdf')
 
         # Draw each line of text
         for line in lines:
             text_width = can.stringWidth(line, 'Helvetica', 12)
-            x_position = (width - text_width) / 2
+            x_position, y_position = calculate_position(width, height, text_width, 12, position)
             can.drawString(x_position, y_position, line)
-            y_position -= line_height
 
         can.save()
 
@@ -87,16 +109,14 @@ def stamp_pdf(file, stamp_text):
         page.merge_page(new_pdf.pages[0])
         output_pdf.add_page(page)
 
-    # Save the result
-    output_stream = io.BytesIO()
-    output_pdf.write(output_stream)
-    output_stream.seek(0)
+    with open(output_path, 'wb') as output_file:
+        output_pdf.write(output_file)
 
-    return send_file(output_stream, as_attachment=True,
-                     download_name='stamped_document.pdf', mimetype='application/pdf')
+    return output_filename
 
 
-def stamp_image(file, stamp_text):
+# stamp image with text
+def stamp_image(file, stamp_text, position='center'):
     # Open the image file
     image = Image.open(file).convert("RGBA")
     width, height = image.size
@@ -121,35 +141,33 @@ def stamp_image(file, stamp_text):
     # 40 to account for some margin
     lines = split_text_to_fit(stamp_text, draw, width - 40, "Helvetica", font_size, context_type='image')
 
-    # Calculate the total height of the text block
-    mask = font.getmask(stamp_text)
-    line_height = mask.size[1]
-    total_text_height = line_height * len(lines)
-    y_position = (height - total_text_height) // 2
-
     # Draw each line of text
     for line in lines:
         bbox = draw.textbbox((0, 0), line, font=font)
         text_width = bbox[2] - bbox[0]
-        x_position = (width - text_width) // 2
+        x_position, y_position = calculate_position(width, height, text_width, font_size, position)
         draw.text((x_position, y_position), line, font=font, fill=(255, 255, 255, 255))  # White text
-        y_position += line_height
 
     # Combine the original image with the text overlay
     stamped_image = Image.alpha_composite(image, stamp)
 
-    output_stream = io.BytesIO()
-    stamped_image.save(output_stream, format='PNG')
-    output_stream.seek(0)
+    extension = file.filename.split('.')[-1].lower()
+    output_filename = generate_unique_filename(extension)
+    output_path = os.path.join('downloads', output_filename)
 
-    return send_file(output_stream, as_attachment=True,
-                     download_name='stamped_image.png', mimetype='image/png')
+    stamped_image.save(output_path, format=extension)
+
+    return output_filename
 
 
-def stamp_pdf_with_image(file, stamp_image_file, signer_text=None):
+# stamp pdf with image or/and text
+def stamp_pdf_with_image(file, stamp_image_file, signer_text=None, position='center'):
     # Read the uploaded PDF
     input_pdf = PdfReader(file)
     output_pdf = PdfWriter()
+
+    output_filename = generate_unique_filename('pdf')
+    output_path = os.path.join('downloads', output_filename)
 
     # Read the stamp image and add transparency
     stamp_img = Image.open(stamp_image_file).convert("RGBA")
@@ -192,29 +210,25 @@ def stamp_pdf_with_image(file, stamp_image_file, signer_text=None):
             # Calculate the total height of the text block
             line_height = 12
             total_text_height = line_height * len(lines)
-            # Move upward by adding to the height
-            y_position = (height + total_text_height) / 2
+            y_position = 0
 
             # Draw each line of text
             for line in lines:
                 text_width = can.stringWidth(line, 'Helvetica', 12)
-                x_position = (width - text_width) / 2
+                x_position, y_position = calculate_position(width, height, text_width, 12, position)
                 can.drawString(x_position, y_position, line)
-                y_position -= line_height
 
-            # Adjust the position for the image to be below the text block
-            y_image_position = y_position - line_height  # Leave a gap equal to one line height
+            y_position -= total_text_height
 
         else:
-            y_image_position = height / 2  # Center the image vertically if no text
+            y_position = height / 2  # Center the image vertically if no text
 
         # Adjust position and size as needed
         stamp_width = 100
         stamp_height = 100
-        x_stamp = (width - stamp_width) / 2
-        y_stamp = y_image_position - stamp_height
+        x_stamp,  y_stamp = calculate_position(width, height, stamp_width, stamp_height, position)
         can.drawImage(transparent_stamp_image, x_stamp, y_stamp,
-                      width=stamp_width, height=stamp_width, mask='auto')
+                      width=stamp_width, height=stamp_height, mask='auto')
         can.save()
 
         # Move to the beginning of the StringIO buffer
@@ -227,16 +241,13 @@ def stamp_pdf_with_image(file, stamp_image_file, signer_text=None):
         page.merge_page(new_pdf.pages[0])
         output_pdf.add_page(page)
 
-    # Save the result
-    output_stream = io.BytesIO()
-    output_pdf.write(output_stream)
-    output_stream.seek(0)
+    with open(output_path, 'wb') as output_file:
+        output_pdf.write(output_file)
 
-    return send_file(output_stream, as_attachment=True,
-                     download_name='stamped_document.pdf', mimetype='application/pdf')
+    return output_filename
 
 
-def stamp_image_with_image(file, stamp_image_file, signer_text=None):
+def stamp_image_with_image(file, stamp_image_file, signer_text=None, position='center'):
     image = Image.open(file).convert("RGBA")
     stamp_img = Image.open(stamp_image_file).convert("RGBA")
 
@@ -262,34 +273,31 @@ def stamp_image_with_image(file, stamp_image_file, signer_text=None):
         lines = split_text_to_fit(signer_text, draw, width - 40, "Helvetica", font_size, context_type='image')
 
         # Calculate the total height of the text block
-        text_height = sum(draw.textbbox((0, 0), line, font=font)[3] - draw.textbbox((0, 0), line, font=font)[1] + 10 for line in lines)
+        text_height = sum(draw.textbbox((0, 0), line, font=font)[3] -
+                          draw.textbbox((0, 0), line, font=font)[1] + 10 for line in lines)
         text_y_position = (height // 2) - (text_height // 2)
 
         # Draw each line of text
         for line in lines:
             bbox = draw.textbbox((0, 0), line, font=font)
             text_width = bbox[2] - bbox[0]
-            text_x_position = (width - text_width) // 2
+            text_x_position, text_y_position = calculate_position(width, height,
+                                                                  text_width, bbox[3] - bbox[1], position)
             draw.text((text_x_position, text_y_position), line, font=font, fill=(255, 0, 0, 255))
             text_y_position += (bbox[3] - bbox[1]) + 10  # Adjust spacing between lines
-
-        # Adjust the position for the image to be below the text block
-        y_image_position = text_y_position + 20  # Leave a gap equal to one line height
-
-    else:
-        y_image_position = (height // 2) - (stamp_img.height // 2)  # Center the image vertically if no text
 
     stamp_ratio = 0.2
     stamp_width = int(width * stamp_ratio)
     stamp_height = int(stamp_width * (stamp_img.height / stamp_img.width))
-
     stamp_img = stamp_img.resize((stamp_width, stamp_height), Image.LANCZOS)
 
-    x_image_position = (width // 2) - (stamp_width // 2)
+    x_image_position, y_image_position = calculate_position(width, height, stamp_width, stamp_height, position)
     base.paste(stamp_img, (x_image_position, y_image_position), stamp_img)
 
-    output_stream = io.BytesIO()
-    base.save(output_stream, format='PNG')
-    output_stream.seek(0)
+    extension = file.filename.split('.')[-1].lower()
+    output_filename = generate_unique_filename(extension)
+    output_path = os.path.join('downloads', output_filename)
 
-    return send_file(output_stream, as_attachment=True, download_name='stamped_image.png', mimetype='image/png')
+    base.save(output_path, format=extension)
+
+    return output_filename
