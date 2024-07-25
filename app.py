@@ -1,4 +1,7 @@
 import os
+import io
+import base64
+import logging
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify, render_template, url_for, send_from_directory
 from flasgger import Swagger, swag_from
@@ -11,6 +14,42 @@ load_dotenv()
 base_url = os.getenv('BASE_URL', 'localhost:5000')
 
 app = Flask(__name__)
+
+# Ensure the 'downloads' directory exists
+if not os.path.exists('downloads'):
+    os.makedirs('downloads')
+
+
+# Configure logging
+logging.basicConfig(filename='stamping.log', level=logging.INFO, format='%(asctime)s - %(message)s')
+
+
+def decode_base64(data):
+    """Decode base64, padding being optional."""
+    missing_padding = len(data) % 4
+    if missing_padding:
+        data += '=' * (4 - missing_padding)
+    return base64.b64decode(data)
+
+
+def log_stamp_activity(file_name):
+    logging.info(f'File stamped: {file_name}')
+
+
+# Get file ext.
+def get_file_extension(file_bytes):
+    """Get the file extension from the magic number."""
+    if file_bytes.startswith(b'%PDF'):
+        return 'pdf'
+    elif file_bytes.startswith(b'\x89PNG\r\n\x1a\n'):
+        return 'png'
+    elif file_bytes[:3] == b'\xff\xd8\xff':
+        return 'jpg'
+    elif file_bytes[:3] == b'GIF':
+        return 'gif'
+    else:
+        return None
+
 
 # Custom Swagger configuration
 swagger_config = {
@@ -72,6 +111,10 @@ def api_docs():
 @app.route('/api/stamp/text', methods=['POST'])
 @swag_from({
     'tags': ['Stamping'],
+    'consumes': [
+        'multipart/form-data',
+        'application/json'
+    ],
     'parameters': [
         {
             'name': 'file',
@@ -86,28 +129,53 @@ def api_docs():
             'type': 'string',
             'required': False,
             'description': 'Text to be used as stamp'
+        },
+        {
+            'name': 'position',
+            'in': 'formData',
+            'type': 'string',
+            'required': False,
+            'description': 'Position to affix the stamp (top, center, bottom, right, left)'
+        },
+        {
+            'name': 'body',
+            'in': 'body',
+            'required': False,
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'file': {
+                        'type': 'string',
+                        'format': 'binary',
+                        'description': 'PDF or image file to be stamped'
+                    },
+                    'stamp': {
+                        'type': 'string',
+                        'description': 'Text to be used as stamp'
+                    },
+                    'position': {
+                        'type': 'string',
+                        'description': 'Position to affix the stamp (top, center, bottom, right, left)'
+                    }
+                }
+            }
         }
     ],
     'responses': {
         200: {
             'description': 'Stamped file',
             'content': {
-                'application/pdf': {
+                'application/json': {
                     'schema': {
-                        'type': 'string',
-                        'format': 'binary'
-                    }
-                },
-                'image/png': {
-                    'schema': {
-                        'type': 'string',
-                        'format': 'binary'
-                    }
-                },
-                'image/jpeg': {
-                    'schema': {
-                        'type': 'string',
-                        'format': 'binary'
+                        'type': 'object',
+                        'properties': {
+                            'status': {
+                                'type': 'string'
+                            },
+                            'download_link': {
+                                'type': 'string'
+                            }
+                        }
                     }
                 }
             }
@@ -115,22 +183,48 @@ def api_docs():
     }
 })
 def stamp_document_text_only():
-    file = request.files['file']
-    stamp_text = request.form.get('stamp', 'CONFIDENTIAL')
+    if request.is_json:
+        data = request.get_json()
+        file_data = data.get('file')
+        file_bytes = decode_base64(file_data)
+        file_extension = get_file_extension(file_bytes)
+        file = io.BytesIO(file_bytes)
+        # Set a default name
+        file.filename = f'uploaded_file.{file_extension}'
+        stamp_text = data.get('stamp', 'CONFIDENTIAL')
+        position = data.get('position', 'center')
+    else:
+        file = request.files['file']
+        stamp_text = request.form.get('stamp', 'CONFIDENTIAL')
+        position = request.form.get('position', 'center')
 
     file_ext = file.filename.split('.')[-1].lower()
 
     if file_ext in ['pdf']:
-        return stamp_pdf(file, stamp_text)
+        output_path = stamp_pdf(file, stamp_text, position)
+        log_stamp_activity(output_path)
+        return jsonify({
+            'status': 'success',
+            'download_link': url_for('download_file', filename=output_path, _external=True)
+        })
     elif file_ext in ['png', 'jpg', 'jpeg']:
-        return stamp_image(file, stamp_text)
+        output_path = stamp_image(file, stamp_text, position)
+        log_stamp_activity(output_path)
+        return jsonify({
+            'status': 'success',
+            'download_link': url_for('download_file', filename=output_path, _external=True)
+        })
     else:
-        return "Unsupported file type", 400
+        return jsonify({'status': 'fail', 'message': 'Unsupported file type'}), 400
 
 
 @app.route('/api/stamp/image', methods=['POST'])
 @swag_from({
     'tags': ['Stamping'],
+    'consumes': [
+        'multipart/form-data',
+        'application/json'
+    ],
     'parameters': [
         {
             'name': 'file',
@@ -145,28 +239,54 @@ def stamp_document_text_only():
             'type': 'file',
             'required': True,
             'description': 'Image file to be used as stamp'
+        },
+        {
+            'name': 'position',
+            'in': 'formData',
+            'type': 'string',
+            'required': False,
+            'description': 'Position to affix the stamp (top, center, bottom, right, left)'
+        },
+        {
+            'name': 'body',
+            'in': 'body',
+            'required': False,
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'file': {
+                        'type': 'string',
+                        'format': 'binary',
+                        'description': 'PDF or image file to be stamped'
+                    },
+                    'stamp_image': {
+                        'type': 'string',
+                        'format': 'binary',
+                        'description': 'Image file to be used as stamp'
+                    },
+                    'position': {
+                        'type': 'string',
+                        'description': 'Position to affix the stamp (top, center, bottom, right, left)'
+                    }
+                }
+            }
         }
     ],
     'responses': {
         200: {
             'description': 'Stamped file',
             'content': {
-                'application/pdf': {
+                'application/json': {
                     'schema': {
-                        'type': 'string',
-                        'format': 'binary'
-                    }
-                },
-                'image/png': {
-                    'schema': {
-                        'type': 'string',
-                        'format': 'binary'
-                    }
-                },
-                'image/jpeg': {
-                    'schema': {
-                        'type': 'string',
-                        'format': 'binary'
+                        'type': 'object',
+                        'properties': {
+                            'status': {
+                                'type': 'string'
+                            },
+                            'download_link': {
+                                'type': 'string'
+                            }
+                        }
                     }
                 }
             }
@@ -174,22 +294,52 @@ def stamp_document_text_only():
     }
 })
 def stamp_document_image():
-    file = request.files['file']
-    stamp_image_file = request.files['stamp_image']
+    if request.is_json:
+        data = request.get_json()
+        file_data = data.get('file')
+        file_bytes = decode_base64(file_data)
+        file_extension = get_file_extension(file_bytes)
+        file = io.BytesIO(file_bytes)
+        # Set a default name
+        file.filename = f'uploaded_file.{file_extension}'
+        stamp_image_data = data.get('stamp_image')
+        stamp_image_file_bytes = decode_base64(stamp_image_data)
+        stamp_image_file_ext = get_file_extension(stamp_image_file_bytes)
+        stamp_image_file = io.BytesIO(stamp_image_file_bytes)
+        stamp_image_file.filename = f'uploaded_file_2.{stamp_image_file_ext}'
+        position = data.get('position', 'center')
+    else:
+        file = request.files['file']
+        stamp_image_file = request.files['stamp_image']
+        position = request.form.get('position', 'center')
 
     file_ext = file.filename.split('.')[-1].lower()
 
     if file_ext in ['pdf']:
-        return stamp_pdf_with_image(file, stamp_image_file)
+        output_path = stamp_pdf_with_image(file, stamp_image_file, position=position)
+        log_stamp_activity(output_path)
+        return jsonify({
+            'status': 'success',
+            'download_link': url_for('download_file', filename=output_path, _external=True)
+        })
     elif file_ext in ['png', 'jpg', 'jpeg']:
-        return stamp_image_with_image(file, stamp_image_file)
+        output_path = stamp_image_with_image(file, stamp_image_file, position=position)
+        log_stamp_activity(output_path)
+        return jsonify({
+            'status': 'success',
+            'download_link': url_for('download_file', filename=output_path, _external=True)
+        })
     else:
-        return "Unsupported file type", 400
+        return jsonify({'status': 'fail', 'message': 'Unsupported file type'}), 400
 
 
 @app.route('/api/stamp/image-and-text', methods=['POST'])
 @swag_from({
     'tags': ['Stamping'],
+    'consumes': [
+        'multipart/form-data',
+        'application/json'
+    ],
     'parameters': [
         {
             'name': 'file',
@@ -211,28 +361,58 @@ def stamp_document_image():
             'type': 'string',
             'required': False,
             'description': 'Signer name to be included in the stamp'
+        },
+        {
+            'name': 'position',
+            'in': 'formData',
+            'type': 'string',
+            'required': False,
+            'description': 'Position to affix the stamp (top, center, bottom, right, left)'
+        },
+        {
+            'name': 'body',
+            'in': 'body',
+            'required': False,
+            'schema': {
+                'type': 'object',
+                'properties': {
+                    'file': {
+                        'type': 'string',
+                        'format': 'binary',
+                        'description': 'PDF or image file to be stamped'
+                    },
+                    'stamp_image': {
+                        'type': 'string',
+                        'format': 'binary',
+                        'description': 'Image to be used as stamp'
+                    },
+                    'signer_text_message': {
+                        'type': 'string',
+                        'description': 'Signer name to be included in the stamp'
+                    },
+                    'position': {
+                        'type': 'string',
+                        'description': 'Position to affix the stamp (top, center, bottom, right, left)'
+                    }
+                }
+            }
         }
     ],
     'responses': {
         200: {
-            'description': 'Stamped PDF file',
+            'description': 'Stamped file',
             'content': {
-                'application/pdf': {
+                'application/json': {
                     'schema': {
-                        'type': 'string',
-                        'format': 'binary'
-                    }
-                },
-                'image/png': {
-                    'schema': {
-                        'type': 'string',
-                        'format': 'binary'
-                    }
-                },
-                'image/jpeg': {
-                    'schema': {
-                        'type': 'string',
-                        'format': 'binary'
+                        'type': 'object',
+                        'properties': {
+                            'status': {
+                                'type': 'string'
+                            },
+                            'download_link': {
+                                'type': 'string'
+                            }
+                        }
                     }
                 }
             }
@@ -240,19 +420,50 @@ def stamp_document_image():
     }
 })
 def stamp_document_image_text():
-    # json_request = request.json
-    file = request.files['file']
-    stamp_image_file = request.files['stamp_image']
-    signer_text = request.form.get('signer_text_message')
+    if request.is_json:
+        data = request.get_json()
+        file_data = data.get('file')
+        file_bytes = decode_base64(file_data)
+        file_extension = get_file_extension(file_bytes)
+        file = io.BytesIO(file_bytes)
+        # Set a default name
+        file.filename = f'uploaded_file.{file_extension}'
+        stamp_image_data = data.get('stamp_image')
+        stamp_image_file_bytes = decode_base64(stamp_image_data)
+        stamp_image_file_ext = get_file_extension(stamp_image_file_bytes)
+        stamp_image_file = io.BytesIO(stamp_image_file_bytes)
+        stamp_image_file.filename = f'uploaded_file_2.{stamp_image_file_ext}'
+        signer_text = data.get('signer_text_message')
+        position = data.get('position', 'center')
+    else:
+        file = request.files['file']
+        stamp_image_file = request.files['stamp_image']
+        signer_text = request.form.get('signer_text_message')
+        position = request.form.get('position', 'center')
 
     file_ext = file.filename.split('.')[-1].lower()
 
     if file_ext in ['pdf']:
-        return stamp_pdf_with_image(file, stamp_image_file, signer_text)
+        output_path = stamp_pdf_with_image(file, stamp_image_file, signer_text, position)
+        log_stamp_activity(output_path)
+        return jsonify({
+            'status': 'success',
+            'download_link': url_for('download_file', filename=output_path, _external=True)
+        })
     elif file_ext in ['png', 'jpg', 'jpeg']:
-        return stamp_image_with_image(file, stamp_image_file, signer_text)
+        output_path = stamp_image_with_image(file, stamp_image_file, signer_text, position)
+        log_stamp_activity(output_path)
+        return jsonify({
+            'status': 'success',
+            'download_link': url_for('download_file', filename=output_path, _external=True)
+        })
     else:
-        return "Unsupported file type", 400
+        return jsonify({'status': 'fail', 'message': 'Unsupported file type'}), 400
+
+
+@app.route('/download/<filename>')
+def download_file(filename):
+    return send_from_directory('downloads', filename)
 
 
 if __name__ == '__main__':

@@ -4,3 +4,10 @@ wfastcgi.py
 web.config
 wfastcgi.log
 .env
+stamping.log
+
+ # Ignore everything in the downloads folder
+downloads/*
+
+# Allow the downloads folder itself to be tracked
+!downloads/
