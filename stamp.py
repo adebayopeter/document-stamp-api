@@ -295,6 +295,10 @@ def stamp_image_with_image(file, stamp_image_file, signer_text=None, position='c
     base.paste(stamp_img, (x_image_position, y_image_position), stamp_img)
 
     extension = file.filename.split('.')[-1].lower()
+    if extension == 'jpg' or extension == 'jpeg':
+        base = base.convert("RGB")  # Convert to RGB before saving as JPEG
+        extension = 'jpeg'
+
     output_filename = generate_unique_filename(extension)
     output_path = os.path.join('downloads', output_filename)
 

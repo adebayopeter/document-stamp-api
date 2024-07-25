@@ -1,4 +1,6 @@
 import os
+import io
+import base64
 import logging
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify, render_template, url_for, send_from_directory
@@ -22,8 +24,31 @@ if not os.path.exists('downloads'):
 logging.basicConfig(filename='stamping.log', level=logging.INFO, format='%(asctime)s - %(message)s')
 
 
+def decode_base64(data):
+    """Decode base64, padding being optional."""
+    missing_padding = len(data) % 4
+    if missing_padding:
+        data += '=' * (4 - missing_padding)
+    return base64.b64decode(data)
+
+
 def log_stamp_activity(file_name):
     logging.info(f'File stamped: {file_name}')
+
+
+# Get file ext.
+def get_file_extension(file_bytes):
+    """Get the file extension from the magic number."""
+    if file_bytes.startswith(b'%PDF'):
+        return 'pdf'
+    elif file_bytes.startswith(b'\x89PNG\r\n\x1a\n'):
+        return 'png'
+    elif file_bytes[:3] == b'\xff\xd8\xff':
+        return 'jpg'
+    elif file_bytes[:3] == b'GIF':
+        return 'gif'
+    else:
+        return None
 
 
 # Custom Swagger configuration
@@ -160,7 +185,12 @@ def api_docs():
 def stamp_document_text_only():
     if request.is_json:
         data = request.get_json()
-        file = data.get('file')
+        file_data = data.get('file')
+        file_bytes = decode_base64(file_data)
+        file_extension = get_file_extension(file_bytes)
+        file = io.BytesIO(file_bytes)
+        # Set a default name
+        file.filename = f'uploaded_file.{file_extension}'
         stamp_text = data.get('stamp', 'CONFIDENTIAL')
         position = data.get('position', 'center')
     else:
@@ -266,8 +296,17 @@ def stamp_document_text_only():
 def stamp_document_image():
     if request.is_json:
         data = request.get_json()
-        file = data.get('file')
-        stamp_image_file = data.get('stamp_image')
+        file_data = data.get('file')
+        file_bytes = decode_base64(file_data)
+        file_extension = get_file_extension(file_bytes)
+        file = io.BytesIO(file_bytes)
+        # Set a default name
+        file.filename = f'uploaded_file.{file_extension}'
+        stamp_image_data = data.get('stamp_image')
+        stamp_image_file_bytes = decode_base64(stamp_image_data)
+        stamp_image_file_ext = get_file_extension(stamp_image_file_bytes)
+        stamp_image_file = io.BytesIO(stamp_image_file_bytes)
+        stamp_image_file.filename = f'uploaded_file_2.{stamp_image_file_ext}'
         position = data.get('position', 'center')
     else:
         file = request.files['file']
@@ -277,14 +316,14 @@ def stamp_document_image():
     file_ext = file.filename.split('.')[-1].lower()
 
     if file_ext in ['pdf']:
-        output_path = stamp_pdf_with_image(file, stamp_image_file, position)
+        output_path = stamp_pdf_with_image(file, stamp_image_file, position=position)
         log_stamp_activity(output_path)
         return jsonify({
             'status': 'success',
             'download_link': url_for('download_file', filename=output_path, _external=True)
         })
     elif file_ext in ['png', 'jpg', 'jpeg']:
-        output_path = stamp_image_with_image(file, stamp_image_file, position)
+        output_path = stamp_image_with_image(file, stamp_image_file, position=position)
         log_stamp_activity(output_path)
         return jsonify({
             'status': 'success',
@@ -383,8 +422,17 @@ def stamp_document_image():
 def stamp_document_image_text():
     if request.is_json:
         data = request.get_json()
-        file = data.get('file')
-        stamp_image_file = data.get('stamp_image')
+        file_data = data.get('file')
+        file_bytes = decode_base64(file_data)
+        file_extension = get_file_extension(file_bytes)
+        file = io.BytesIO(file_bytes)
+        # Set a default name
+        file.filename = f'uploaded_file.{file_extension}'
+        stamp_image_data = data.get('stamp_image')
+        stamp_image_file_bytes = decode_base64(stamp_image_data)
+        stamp_image_file_ext = get_file_extension(stamp_image_file_bytes)
+        stamp_image_file = io.BytesIO(stamp_image_file_bytes)
+        stamp_image_file.filename = f'uploaded_file_2.{stamp_image_file_ext}'
         signer_text = data.get('signer_text_message')
         position = data.get('position', 'center')
     else:
